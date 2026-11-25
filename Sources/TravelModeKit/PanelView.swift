@@ -33,6 +33,10 @@ public struct PanelView: View {
             .padding(.top, 10)
             .animation(.easeInOut(duration: 0.3), value: mode)
 
+            if !controller.device.hasLid {
+                desktopNote.padding(.top, 14)
+            }
+
             if !controller.isSetUp {
                 setupCard.padding(.top, 14)
             }
@@ -98,6 +102,34 @@ public struct PanelView: View {
         .frame(width: Theme.panelWidth)
         .animation(.easeInOut(duration: 0.25), value: controller.mode)
         .onAppear { controller.refresh() }
+    }
+
+    /// On a Mac without a lid, macOS's own Energy setting already keeps it running, more gently.
+    private var desktopNote: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Made for MacBooks")
+                .font(.system(size: 12, weight: .semibold))
+            Text("A \(controller.device.name) has no lid, so you probably don't need this. To keep it running as a server, turn on \"Prevent automatic sleeping when the display is off\" in System Settings › Energy. That still lets you sleep it from the Apple menu.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Open Energy settings") { openEnergySettings() }
+                .buttonStyle(OutlineButtonStyle())
+                .padding(.top, 2)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(0.06))
+        )
+    }
+
+    private func openEnergySettings() {
+        let energy = URL(string: "x-apple.systempreferences:com.apple.Energy-Settings.extension")!
+        if !NSWorkspace.shared.open(energy) {
+            NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
+        }
     }
 
     private var setupCard: some View {

@@ -1,17 +1,27 @@
 # Travel Mode
 
-A tiny menu bar app that switches a Mac between two modes:
+A tiny menu bar app for MacBooks that switches between two modes:
 
-- **At Desk**: the Mac keeps running with the lid shut. Leave a MacBook closed on a hub or stand and still reach it with Screen Sharing, ssh or a remote-desktop app.
-- **Travelling**: the Mac sleeps normally, so it's safe to put in a bag.
+- **At Desk**: the MacBook keeps running with the lid shut. Leave it closed on a hub or stand, as a home server or headless machine, and still reach it with Screen Sharing, ssh or a remote-desktop app.
+- **Travelling**: the MacBook sleeps normally, so it's safe to put in a bag.
 
-It's made for MacBooks, and works on any Mac: on a Mac mini, Mac Studio or iMac, At Desk simply keeps it from ever sleeping. The panel names your Mac ("MacBook Air keeps running with the lid shut") and hides the lid options on Macs without a lid.
+Closing a MacBook's lid always puts it to sleep, unless an external display is connected. macOS has no setting to change that. Travel Mode makes it one click, and one click back before you pack.
 
 <p align="center"><img src="docs/flip.gif" width="376" alt="The Travel Mode panel flipping from At Desk to Travelling, like a departure board"></p>
 
 | At Desk | Travelling (dark mode) |
 |---|---|
 | ![At Desk panel](docs/panel-desk-light.png) | ![Travelling panel](docs/panel-travelling-dark.png) |
+
+## Do you need it?
+
+| Your Mac | Use |
+|---|---|
+| **MacBook** you want to use closed, without an external display | **Travel Mode** |
+| MacBook with an external display, keyboard and power | macOS's own clamshell mode already keeps it running |
+| **Mac mini, Mac Studio, iMac, Mac Pro** | **You don't need this.** Turn on *Prevent automatic sleeping when the display is off* in System Settings › Energy. That keeps it running as a server and still lets you sleep it from the Apple menu, which At Desk doesn't. |
+
+The app still runs on desktop Macs. There it says it was made for MacBooks and links to the Energy settings.
 
 ## What it does
 
