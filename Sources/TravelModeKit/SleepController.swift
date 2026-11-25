@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftUI
 
@@ -8,56 +9,93 @@ public final class SleepController: ObservableObject {
     @Published public private(set) var isSetUp: Bool
     @Published public private(set) var hasOwnRule: Bool
     @Published public var message: String?
+    /// The Mac this runs on, for wording ("MacBook Air keeps running…") and lid features.
+    @Published public private(set) var device: Device
 
     /// Turn the screen off the moment the lid closes while At Desk. On by default.
     @Published public var screenOffOnLidClose: Bool {
         didSet { UserDefaults.standard.set(screenOffOnLidClose, forKey: Self.screenOffKey) }
     }
 
+    /// The person chose "Not now" on the setup card.
+    @Published public var setupDismissed: Bool {
+        didSet { UserDefaults.standard.set(setupDismissed, forKey: Self.setupDismissedKey) }
+    }
+
+    /// Called when the charger is unplugged while At Desk, so the app can warn before it goes in a bag.
+    public var onUnpluggedAtDesk: (() -> Void)?
+    /// Called when the charger is plugged back in (the warning can go away).
+    public var onPluggedIn: (() -> Void)?
+
     private static let screenOffKey = "screenOffOnLidClose"
-    private let isDemo: Bool
-    private var timer: Timer?
-    private var lidTimer: Timer?
+    private static let setupDismissedKey = "setupDismissed"
+    /// Demo controllers drive the README previews and never touch real settings or windows.
+    public let isDemo: Bool
+    private var timers: [Timer] = []
     private var lidWasClosed = false
+    private var wasOnBattery = false
 
     /// A live controller, or a demo one (for previews) that never touches real settings.
-    /// The Mac this runs on, for wording ("MacBook Air keeps running…") and lid features.
-    public let device: Device
-
     public init(demo: Mode? = nil, setUp: Bool = true, device: Device? = nil) {
         screenOffOnLidClose = UserDefaults.standard.object(forKey: Self.screenOffKey) as? Bool ?? true
-        self.device = device ?? (demo == nil ? Device.current : Device(name: "MacBook Air", hasLid: true))
+        setupDismissed = demo == nil && UserDefaults.standard.bool(forKey: Self.setupDismissedKey)
         if let demo {
+            self.device = device ?? Device(name: "MacBook Air", hasLid: true)
             mode = demo
             isSetUp = setUp
             hasOwnRule = setUp
             isDemo = true
-        } else {
-            mode = SleepSystem.currentMode()
-            isSetUp = SleepSystem.isSetUp()
-            hasOwnRule = SleepSystem.hasOwnRule()
-            isDemo = false
-            // Something else (Terminal, another app) may change the setting; keep the icon honest.
-            timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
-                Task { @MainActor in self?.refresh() }
-            }
-            // Check the lid once a second; act only on the moment it closes, so a screen woken
-            // remotely (Sill, Screen Sharing) with the lid shut stays on.
-            if self.device.hasLid {
-                lidWasClosed = Lid.isClosed()
-                lidTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-                    Task { @MainActor in self?.checkLid() }
-                }
+            return
+        }
+        self.device = device ?? Device.quick()
+        mode = SleepSystem.currentMode()
+        isSetUp = SleepSystem.isSetUp()
+        hasOwnRule = SleepSystem.hasOwnRule()
+        isDemo = false
+        startWatching()
+        // The everyday model name can take a moment to look up the first time; don't hold up launch.
+        Task.detached(priority: .utility) {
+            let detailed = Device.detailed()
+            await MainActor.run { [weak self] in
+                if let self, self.device != detailed { self.device = detailed }
             }
         }
     }
 
-    private func checkLid() {
+    private func startWatching() {
+        // Something else (Terminal, another app) may change the setting; keep the icon honest.
+        timers.append(Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refresh() }
+        })
+        guard device.hasLid else { return }
+        // Once a second: act only on the moment the lid closes or the charger is unplugged, so a
+        // screen woken remotely (Screen Sharing, Sill) with the lid shut stays on.
+        lidWasClosed = Lid.isClosed()
+        wasOnBattery = Lid.isOnBattery()
+        timers.append(Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.watchLidAndPower() }
+        })
+    }
+
+    private func watchLidAndPower() {
         let closed = Lid.isClosed()
-        defer { lidWasClosed = closed }
-        guard closed, !lidWasClosed, screenOffOnLidClose else { return }
-        // Read the real setting rather than the cached mode, in case it changed elsewhere.
-        if SleepSystem.currentMode() == .desk { Lid.turnScreenOff() }
+        let onBattery = Lid.isOnBattery()
+        defer {
+            lidWasClosed = closed
+            wasOnBattery = onBattery
+        }
+        if closed, !lidWasClosed {
+            let external = Lid.externalDisplayActive()
+            let atDesk = SleepSystem.currentMode() == .desk
+            log.info("Lid closed (at desk: \(atDesk), external display: \(external), screen-off option: \(self.screenOffOnLidClose))")
+            if screenOffOnLidClose, !external, atDesk { Lid.turnScreenOff() }
+        }
+        if onBattery != wasOnBattery {
+            let atDesk = SleepSystem.currentMode() == .desk
+            log.info("Power source changed: \(onBattery ? "battery" : "charger", privacy: .public) (at desk: \(atDesk))")
+            if onBattery, atDesk { onUnpluggedAtDesk?() }
+            if !onBattery { onPluggedIn?() }
+        }
     }
 
     public func refresh() {
@@ -66,19 +104,34 @@ public final class SleepController: ObservableObject {
         if current != mode { mode = current }
     }
 
-    public func switchMode() {
+    /// Switches to the other mode. Returns true when the switch happened.
+    @discardableResult
+    public func switchMode() -> Bool {
         let target = mode.other
         message = nil
-        guard !isDemo else { mode = target; return }
+        guard !isDemo else { mode = target; return true }
         if SleepSystem.setWithoutPassword(target) {
             mode = target
-            return
+        } else {
+            if let error = SleepSystem.setWithAdminPrompt(target), error != SleepSystem.cancelled {
+                message = "Couldn't switch to \(target.title): \(error)"
+            }
+            refresh()
+            isSetUp = SleepSystem.isSetUp()
         }
-        if let error = SleepSystem.setWithAdminPrompt(target), error != SleepSystem.cancelled {
-            message = "Couldn't switch to \(target.title): \(error)"
+        guard mode == target else {
+            log.error("Switch to \(target.rawValue, privacy: .public) failed or was cancelled")
+            return false
         }
-        refresh()
-        isSetUp = SleepSystem.isSetUp()
+        log.info("Switched to \(target.rawValue, privacy: .public)")
+        AccessibilityNotification.Announcement("Now \(target.title). \(target.detail(on: device))").post()
+        return true
+    }
+
+    /// One click to pack up: switch to Travelling, then sleep.
+    public func switchToTravellingAndSleep() {
+        if mode == .desk, !switchMode() { return }
+        sleepNow()
     }
 
     public func setUp() {
@@ -95,7 +148,7 @@ public final class SleepController: ObservableObject {
         message = nil
         guard !isDemo else { isSetUp = false; hasOwnRule = false; return }
         if let error = SleepSystem.removeRule(), error != SleepSystem.cancelled {
-            message = "Couldn't remove the permission: \(error)"
+            message = "Couldn't turn the password back on: \(error)"
         }
         isSetUp = SleepSystem.isSetUp()
         hasOwnRule = SleepSystem.hasOwnRule()

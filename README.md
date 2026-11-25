@@ -25,10 +25,11 @@ The app still runs on desktop Macs. There it says it was made for MacBooks and l
 
 ## What it does
 
-- Shows the current mode in the menu bar: a laptop at your desk, an airplane when travelling.
-- Switches with one click. The board flips letter by letter, like an airport departure board. With Reduce motion on, it fades instead.
-- **Sleep now**, while travelling, puts the Mac to sleep right away.
-- **Screen off when the lid closes** (on by default). At Desk, macOS keeps the built-in screen lit inside a closed lid until the display-sleep timer runs out. Travel Mode turns it off the moment the lid closes. If your Mac asks for a password after the display sleeps, that also locks it. Waking the screen remotely afterwards still works.
+- Shows the current mode in the menu bar: a laptop at your desk, a suitcase when travelling. At Desk is marked amber (it never sleeps) and Travelling green (safe to pack).
+- Switches with one click. The board flips letter by letter, like an airport departure board. With Reduce motion on, it fades instead. VoiceOver announces the new mode.
+- **Warns you before you pack.** Unplug the charger while At Desk and you get a notification: "Still At Desk: your MacBook won't sleep, even in a bag", with a **Switch to Travelling** button.
+- **Switch to Travelling and sleep**: one click to pack up. While travelling it becomes **Sleep now**.
+- **Screen off when the lid closes** (on by default). At Desk, macOS keeps the built-in screen lit inside a closed lid until the display-sleep timer runs out. Travel Mode turns it off the moment the lid closes. If your Mac asks for a password after the display sleeps, that also locks it. It leaves the screens alone when an external display is connected, and waking the screen remotely afterwards still works.
 - **Open at login**, from the panel.
 - A command line for scripts:
   ```bash
@@ -48,7 +49,7 @@ On first launch, **Set up** asks for your password once and installs a sudo rule
 you ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 0, /usr/bin/pmset -a disablesleep 1
 ```
 
-The rule is checked with `visudo` before and after it's installed, and removed again if either check fails. **Remove permission** in the panel deletes it. You can skip setup entirely; macOS then asks for your password each time you switch.
+The rule is written by root straight into a root-owned staging file (which sudo ignores), checked with `visudo`, moved into place, and the whole sudo configuration is checked again. If any step fails, it's removed. **Require password to switch** in the panel deletes it. You can skip setup with **Not now**; macOS then asks for your password each time you switch.
 
 > [!WARNING]
 > At Desk, the Mac doesn't sleep, even with the lid closed or from  → Sleep. Don't put it in a bag in At Desk mode: it stays awake, gets warm and drains the battery. Switch to Travelling first.
@@ -77,7 +78,7 @@ The app is ad-hoc signed, not notarized; there's no paid Apple Developer ID behi
 
 ## Uninstall
 
-1. In the panel, choose **Remove permission**, then **Quit Travel Mode**.
+1. In the panel, choose **Require password to switch** (removes the sudo rule), then **Quit Travel Mode**.
 2. Delete `Travel Mode.app`.
 3. Make sure sleep is back on:
    ```bash

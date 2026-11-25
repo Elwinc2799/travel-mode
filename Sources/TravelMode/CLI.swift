@@ -2,8 +2,10 @@ import Foundation
 import TravelModeKit
 
 enum CLI {
+    static let options: Set<String> = ["--status", "--info", "--desk", "--travel", "--help", "-h"]
+
     static let usage = """
-    Usage: TravelMode [--status | --info | --desk | --travel]
+    Usage: TravelMode [--status | --info | --desk | --travel | --help]
       --status   Print the current mode: "desk" or "travelling".
       --info     Describe the mode, this Mac, and whether setup is done.
       --desk     At Desk: sleep off, the Mac keeps running with the lid shut.
@@ -17,7 +19,7 @@ enum CLI {
             print(SleepSystem.currentMode().rawValue)
             return 0
         case "--info":
-            let device = Device.current
+            let device = Device.detailed()
             let mode = SleepSystem.currentMode()
             print("\(mode.title): \(mode.detail(on: device))")
             print("Device: \(device.name), lid: \(device.hasLid ? "yes" : "no")")

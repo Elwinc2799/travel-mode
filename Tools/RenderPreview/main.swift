@@ -60,6 +60,9 @@ MainActor.assumeIsolated {
     let desktop = SleepController(demo: .travelling, device: Device(name: "Mac mini", hasLid: false))
     save(PanelChrome(scheme: .light) { PanelView(controller: desktop, openAtLogin: false) },
          "panel-desktop-light.png")
+    save(PanelChrome(scheme: .light) {
+        UnplugWarningView(deviceName: "MacBook Air", onSwitch: {}, onDismiss: {})
+    }, "unplug-warning-light.png")
 
     // The flip animation: rest, At Desk → Travelling, rest, Travelling → At Desk, rest. 30 fps.
     let fps = 30

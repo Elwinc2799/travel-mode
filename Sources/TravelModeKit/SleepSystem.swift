@@ -66,26 +66,21 @@ public enum SleepSystem {
         guard user.range(of: "^[A-Za-z0-9._-]+$", options: .regularExpression) != nil else {
             return "your account name has characters a sudo rule can't hold."
         }
-        let rule = """
-        # Installed by Travel Mode (github.com/Elwinc2799/travel-mode).
-        # Lets \(user) switch system sleep off and on without a password. Nothing else.
-        \(user) ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 0, /usr/bin/pmset -a disablesleep 1
-
-        """
-        let temp = FileManager.default.temporaryDirectory
-            .appendingPathComponent("travel-mode-\(UUID().uuidString)")
-        do {
-            try rule.write(to: temp, atomically: true, encoding: .utf8)
-        } catch {
-            return "couldn't prepare the permission file (\(error.localizedDescription))."
-        }
-        defer { try? FileManager.default.removeItem(at: temp) }
-        let path = temp.path
-        // Check the file, install it root-owned and read-only, then re-check every sudo rule.
-        // If anything fails, the file is removed again so sudo is never left broken.
-        let command = "/usr/sbin/visudo -c -f '\(path)' && "
-            + "/usr/bin/install -m 0440 -o root -g wheel '\(path)' \(ruleFile) && "
-            + "/usr/sbin/visudo -c || { /bin/rm -f \(ruleFile); exit 1; }"
+        let lines = [
+            "# Installed by Travel Mode (github.com/Elwinc2799/travel-mode).",
+            "# Lets \(user) switch system sleep off and on without a password. Nothing else.",
+            "\(user) ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 0, /usr/bin/pmset -a disablesleep 1",
+        ]
+        // Root writes the rule itself, into a root-owned staging file, so no other process can swap
+        // the content between the check and the install. sudo ignores file names containing a dot,
+        // so the staging file is never live. Check it, move it into place, re-check every rule;
+        // on any failure both files are removed so sudo is never left broken.
+        let staging = "/etc/sudoers.d/.travel-mode.new"
+        let quoted = lines.map { "'\($0)'" }.joined(separator: " ")
+        let command = "umask 0337 && /usr/bin/printf '%s\\n' \(quoted) > \(staging) && "
+            + "/usr/sbin/chown root:wheel \(staging) && /bin/chmod 0440 \(staging) && "
+            + "/usr/sbin/visudo -c -f \(staging) && /bin/mv -f \(staging) \(ruleFile) && "
+            + "/usr/sbin/visudo -c || { /bin/rm -f \(staging) \(ruleFile); exit 1; }"
         return runAsAdmin(command)
     }
 

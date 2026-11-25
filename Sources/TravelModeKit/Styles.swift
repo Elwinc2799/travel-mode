@@ -6,10 +6,11 @@ struct SwitchButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 13, weight: .semibold))
+            .font(.body.weight(.semibold))
             .foregroundStyle(Theme.paper)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 9)
+            // A fixed height: the laptop and suitcase icons differ in height, and the panel
+            // shouldn't change size between modes.
+            .frame(maxWidth: .infinity, minHeight: 36, maxHeight: 36)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(scheme == .dark ? Theme.flap : Theme.nightSlate)
@@ -25,37 +26,40 @@ struct SwitchButtonStyle: ButtonStyle {
     }
 }
 
-/// Quiet text actions: Sleep now, Quit, Remove permission.
+/// Text actions. `prominent` ones (Sleep now) use the primary colour so they read as clickable;
+/// the rest (Quit, the password option) stay secondary.
 struct QuietButtonStyle: ButtonStyle {
-    var weight: Font.Weight = .regular
+    var prominent = false
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12, weight: weight))
-            .foregroundStyle(.secondary)
+            .font(.callout.weight(prominent ? .medium : .regular))
+            .foregroundStyle(prominent ? .primary : .secondary)
             .opacity(configuration.isPressed ? 0.6 : 1)
             .contentShape(Rectangle())
     }
 }
 
-/// A plain outlined button, for the one-time setup.
+/// A plain outlined button, for the cards.
 struct OutlineButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12, weight: .semibold))
+            .font(.callout.weight(.semibold))
             .foregroundStyle(.primary)
             .padding(.horizontal, 12)
             .padding(.vertical, 5)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.25), lineWidth: 1)
+                    .strokeBorder(Color.primary.opacity(0.35), lineWidth: 1)
             )
             .opacity(configuration.isPressed ? 0.6 : 1)
             .contentShape(Rectangle())
     }
 }
 
-/// A small switch in the board's colours.
+/// A small switch drawn in SwiftUI (so the README previews can render it), with native-level
+/// contrast: the system accent colour when on, a clearly visible track when off.
+/// VoiceOver reads it as a switch, not a button.
 struct PillToggleStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
         Button {
@@ -63,22 +67,48 @@ struct PillToggleStyle: ToggleStyle {
         } label: {
             HStack {
                 configuration.label
-                    .font(.system(size: 12))
+                    .font(.callout)
                     .foregroundStyle(.primary)
                 Spacer()
                 Capsule()
-                    .fill(configuration.isOn ? Theme.platformGreen : Color.primary.opacity(0.18))
+                    .fill(configuration.isOn ? Color.accentColor : Color.primary.opacity(0.32))
                     .frame(width: 28, height: 16)
                     .overlay(alignment: configuration.isOn ? .trailing : .leading) {
                         Circle()
                             .fill(.white)
-                            .shadow(color: .black.opacity(0.2), radius: 0.5, y: 0.5)
+                            .overlay(Circle().strokeBorder(.black.opacity(0.18), lineWidth: 0.5))
+                            .shadow(color: .black.opacity(0.25), radius: 0.5, y: 0.5)
                             .padding(2)
                     }
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .focusRing(cornerRadius: 6)
+        .accessibilityRemoveTraits(.isButton)
+        .accessibilityAddTraits(.isToggle)
         .accessibilityValue(configuration.isOn ? "On" : "Off")
     }
+}
+
+/// Custom button styles get no system focus ring, so draw one in the accent colour when focused
+/// (Tab with Full Keyboard Access).
+struct FocusRing: ViewModifier {
+    let cornerRadius: CGFloat
+    @FocusState private var focused: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .focused($focused)
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius + 3, style: .continuous)
+                    .stroke(Color.accentColor, lineWidth: 2)
+                    .padding(-3)
+                    .opacity(focused ? 1 : 0)
+            )
+    }
+}
+
+extension View {
+    func focusRing(cornerRadius: CGFloat) -> some View { modifier(FocusRing(cornerRadius: cornerRadius)) }
 }

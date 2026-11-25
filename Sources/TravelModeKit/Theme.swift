@@ -7,8 +7,11 @@ public enum Theme {
     public static let flapLight = Color(hex: 0x34445A)
     public static let hinge = Color(hex: 0x16202A)
     public static let paper = Color(hex: 0xF3EDE2)
+    /// State colours. The bright pair reads on dark surfaces; the deep pair keeps 3:1 contrast on light ones.
     public static let departureAmber = Color(hex: 0xF5B841)
+    public static let departureAmberDeep = Color(hex: 0xB7791F)
     public static let platformGreen = Color(hex: 0x6CC3A0)
+    public static let platformGreenDeep = Color(hex: 0x2E8B66)
 
     public static let tileSize = CGSize(width: 24, height: 34)
     public static let panelWidth: CGFloat = 320

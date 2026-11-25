@@ -11,23 +11,34 @@ public struct Device: Sendable, Equatable {
         self.hasLid = hasLid
     }
 
-    public static let current = detect()
-
-    static func detect() -> Device {
-        let model = sysctlString("hw.model") ?? ""
-        return Device(name: marketingName(model: model), hasLid: lidExists())
+    /// Instant: the cached everyday name, or one guessed from the model identifier. Never blocks.
+    public static func quick() -> Device {
+        let model = modelIdentifier()
+        let name = UserDefaults.standard.string(forKey: cacheKey(model)) ?? nameFromIdentifier(model)
+        return Device(name: name, hasLid: lidExists())
     }
+
+    /// The full answer, asking System Information if the name isn't cached yet. Can take a second
+    /// or two the first time, so the app calls it off the main thread.
+    public static func detailed() -> Device {
+        let model = modelIdentifier()
+        let key = cacheKey(model)
+        if let cached = UserDefaults.standard.string(forKey: key) {
+            return Device(name: cached, hasLid: lidExists())
+        }
+        if let name = systemProfilerName() {
+            UserDefaults.standard.set(name, forKey: key) // only cache real answers
+            return Device(name: name, hasLid: lidExists())
+        }
+        return Device(name: nameFromIdentifier(model), hasLid: lidExists())
+    }
+
+    private static func cacheKey(_ model: String) -> String { "deviceName.\(model)" }
+
+    private static func modelIdentifier() -> String { sysctlString("hw.model") ?? "" }
 
     /// Newer Macs report a bare identifier such as "Mac16,10", so the everyday name comes from
-    /// System Information. It is slow-ish, so it's cached per model identifier.
-    static func marketingName(model: String) -> String {
-        let key = "deviceName.\(model)"
-        if let cached = UserDefaults.standard.string(forKey: key), !cached.isEmpty { return cached }
-        let name = systemProfilerName() ?? nameFromIdentifier(model)
-        UserDefaults.standard.set(name, forKey: key)
-        return name
-    }
-
+    /// System Information.
     private static func systemProfilerName() -> String? {
         let result = Shell.run("/usr/sbin/system_profiler", ["SPHardwareDataType", "-json"])
         guard result.status == 0,
@@ -38,7 +49,7 @@ public struct Device: Sendable, Equatable {
         return name
     }
 
-    /// Fallback for older identifiers such as "MacBookAir10,1" or "Macmini9,1".
+    /// Fallback for identifiers such as "MacBookAir10,1" or "Macmini9,1"; newer ones give "Mac".
     static func nameFromIdentifier(_ model: String) -> String {
         let known: [(prefix: String, name: String)] = [
             ("MacBookPro", "MacBook Pro"), ("MacBookAir", "MacBook Air"), ("MacBook", "MacBook"),

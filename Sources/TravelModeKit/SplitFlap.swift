@@ -54,7 +54,8 @@ public enum SplitFlapTiming {
 
 /// The departure board: ten flap tiles in a slate housing.
 public struct SplitFlapBoard: View {
-    public static let tileCount = 10
+    /// Enough tiles for the longest mode name, and at least ten, so no title is ever cut off.
+    public static let tileCount = max(10, Mode.allCases.map(\.title.count).max() ?? 0)
 
     let text: String
     let frames: [TileFrame]?
@@ -89,7 +90,7 @@ public struct SplitFlapBoard: View {
                 .shadow(color: .black.opacity(0.25), radius: 1, y: 1)
         )
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(text)
+        .accessibilityLabel("Current mode: \(text)")
     }
 }
 
@@ -123,6 +124,7 @@ struct FlapTile: View {
             withAnimation(.easeInOut(duration: 0.2)) {
                 from = target
                 to = target
+                progress = 1
             }
             return
         }

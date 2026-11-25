@@ -6,6 +6,8 @@ public struct PanelView: View {
     @ObservedObject var controller: SleepController
     let boardFrames: [TileFrame]?
     @State private var openAtLogin: Bool
+    @State private var syncingLoginSwitch = false
+    @Environment(\.colorScheme) private var scheme
 
     /// - Parameters:
     ///   - boardFrames: draw the board at one fixed moment (for previews) instead of animating.
@@ -19,25 +21,27 @@ public struct PanelView: View {
     public var body: some View {
         let mode = controller.mode
         VStack(alignment: .leading, spacing: 0) {
-            SplitFlapBoard(text: mode.title, frames: boardFrames)
-
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(mode.color)
-                    .frame(width: 7, height: 7)
-                Text(mode.detail(on: controller.device))
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .contentTransition(.opacity)
+            VStack(alignment: .leading, spacing: 10) {
+                SplitFlapBoard(text: mode.title, frames: boardFrames)
+                HStack(spacing: 7) {
+                    Circle()
+                        .fill(mode.color(in: scheme))
+                        .frame(width: 8, height: 8)
+                    Text(mode.detail(on: controller.device))
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .contentTransition(.opacity)
+                }
             }
-            .padding(.top, 10)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Current mode: \(mode.title). \(mode.detail(on: controller.device))")
             .animation(.easeInOut(duration: 0.3), value: mode)
 
             if !controller.device.hasLid {
                 desktopNote.padding(.top, 14)
             }
 
-            if !controller.isSetUp {
+            if !controller.isSetUp && !controller.setupDismissed {
                 setupCard.padding(.top, 14)
             }
 
@@ -47,20 +51,22 @@ public struct PanelView: View {
                 Label("Switch to \(mode.other.title)", systemImage: mode.other.symbol)
             }
             .buttonStyle(SwitchButtonStyle())
-            .keyboardShortcut(.defaultAction)
+            .focusRing(cornerRadius: 8)
             .padding(.top, 16)
 
-            // Always laid out, so the panel keeps its size when the mode changes; shown only while Travelling.
-            Button("Sleep now") { controller.sleepNow() }
-                .buttonStyle(QuietButtonStyle(weight: .medium))
-                .padding(.top, 10)
-                .opacity(mode == .travelling ? 1 : 0)
-                .disabled(mode != .travelling)
-                .accessibilityHidden(mode != .travelling)
+            // The packing shortcut. At Desk the Mac can't sleep at all, so this switches first.
+            Button {
+                controller.switchToTravellingAndSleep()
+            } label: {
+                Label(mode == .desk ? "Switch to Travelling and sleep" : "Sleep now", systemImage: "moon.zzz")
+            }
+            .buttonStyle(QuietButtonStyle(prominent: true))
+            .focusRing(cornerRadius: 4)
+            .padding(.top, 10)
 
             if let message = controller.message {
-                Text(message)
-                    .font(.system(size: 11))
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 10)
@@ -72,49 +78,110 @@ public struct PanelView: View {
                 .padding(.vertical, 12)
 
             if controller.device.hasLid {
-                Toggle("Screen off when the lid closes", isOn: $controller.screenOffOnLidClose)
-                    .toggleStyle(PillToggleStyle())
-                    .help("At Desk, macOS keeps the screen lit inside a closed lid. This turns it off, and locks the Mac if your password is required after the display sleeps.")
-                    .padding(.bottom, 8)
+                VStack(alignment: .leading, spacing: 3) {
+                    Toggle("Screen off when the lid closes", isOn: $controller.screenOffOnLidClose)
+                        .toggleStyle(PillToggleStyle())
+                    Text("At Desk only. Also locks the Mac if a password is required after sleep.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .opacity(mode == .desk ? 1 : 0.6)
+                .padding(.bottom, 10)
             }
 
             Toggle("Open at login", isOn: $openAtLogin)
                 .toggleStyle(PillToggleStyle())
                 .onChange(of: openAtLogin) { _, enabled in
-                    do { try LoginItem.set(enabled) } catch {
+                    guard !syncingLoginSwitch else { return }
+                    do {
+                        try LoginItem.set(enabled)
+                    } catch {
                         controller.message = "Couldn't change Open at login: \(error.localizedDescription)"
                     }
+                    syncLoginSwitch()
                 }
 
-            HStack {
-                if controller.hasOwnRule {
-                    Button("Remove permission") { controller.removePermission() }
-                        .buttonStyle(QuietButtonStyle())
+            if controller.hasOwnRule {
+                Button { controller.removePermission() } label: {
+                    Label("Require password to switch…", systemImage: "lock")
                 }
+                    .buttonStyle(QuietButtonStyle())
+                    .focusRing(cornerRadius: 4)
+                    .help("Removes Travel Mode's sudo rule. macOS will ask for your password each time you switch.")
+                    .padding(.top, 12)
+            }
+
+            HStack {
                 Spacer()
                 Button("Quit Travel Mode") { NSApp.terminate(nil) }
                     .buttonStyle(QuietButtonStyle())
+                    .focusRing(cornerRadius: 4)
                     .keyboardShortcut("q")
             }
-            .padding(.top, 10)
+            .padding(.top, controller.hasOwnRule ? 6 : 12)
         }
         .padding(16)
         .frame(width: Theme.panelWidth)
+        .fixedSize(horizontal: false, vertical: true)
+        .background {
+            // Menu bar windows don't shrink by themselves when content goes away (the setup card,
+            // an error), which leaves a blank strip. Keep the window fitted to the content.
+            if !controller.isDemo {
+                GeometryReader { proxy in WindowFitter(contentHeight: proxy.size.height) }
+            }
+        }
         .animation(.easeInOut(duration: 0.25), value: controller.mode)
-        .onAppear { controller.refresh() }
+        .onAppear {
+            controller.message = nil
+            controller.refresh()
+            if boardFrames == nil { syncLoginSwitch() }
+        }
+    }
+
+    /// Shows the real login-item state (it can fail, or need approval in System Settings).
+    private func syncLoginSwitch() {
+        let actual = LoginItem.isEnabled
+        guard actual != openAtLogin else { return }
+        syncingLoginSwitch = true
+        openAtLogin = actual
+        DispatchQueue.main.async { syncingLoginSwitch = false }
     }
 
     /// On a Mac without a lid, macOS's own Energy setting already keeps it running, more gently.
     private var desktopNote: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Made for MacBooks")
-                .font(.system(size: 12, weight: .semibold))
-            Text("A \(controller.device.name) has no lid, so you probably don't need this. To keep it running as a server, turn on \"Prevent automatic sleeping when the display is off\" in System Settings › Energy. That still lets you sleep it from the Apple menu.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+        card(title: "Made for MacBooks",
+             body: "A \(controller.device.name) has no lid, so you probably don't need this. To keep it running as a server, turn on \"Prevent automatic sleeping when the display is off\" in System Settings › Energy. That still lets you sleep it from the Apple menu.") {
             Button("Open Energy settings") { openEnergySettings() }
                 .buttonStyle(OutlineButtonStyle())
+                .focusRing(cornerRadius: 6)
+        }
+    }
+
+    private var setupCard: some View {
+        card(title: "Switch without a password",
+             body: "Travel Mode can change modes without asking for your password each time. macOS asks for it once now. You can undo this any time.") {
+            HStack(spacing: 8) {
+                Button("Set up") { controller.setUp() }
+                    .buttonStyle(OutlineButtonStyle())
+                    .focusRing(cornerRadius: 6)
+                Button("Not now") { controller.setupDismissed = true }
+                    .buttonStyle(QuietButtonStyle())
+                    .focusRing(cornerRadius: 4)
+            }
+        }
+    }
+
+    private func card<Actions: View>(title: String, body: String,
+                                     @ViewBuilder actions: () -> Actions) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.callout.weight(.semibold))
+            Text(body)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            actions()
                 .padding(.top, 2)
         }
         .padding(10)
@@ -130,25 +197,5 @@ public struct PanelView: View {
         if !NSWorkspace.shared.open(energy) {
             NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
         }
-    }
-
-    private var setupCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("One-time setup")
-                .font(.system(size: 12, weight: .semibold))
-            Text("Let Travel Mode switch sleep without asking for your password each time. macOS asks for it once now.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Button("Set up") { controller.setUp() }
-                .buttonStyle(OutlineButtonStyle())
-                .padding(.top, 2)
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.primary.opacity(0.06))
-        )
     }
 }
