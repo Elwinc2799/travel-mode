@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import IOKit.pwr_mgt
 import SwiftUI
 
 /// The app's state: which mode the Mac is in, whether setup is done, and the last problem.
@@ -75,6 +76,9 @@ public final class SleepController: ObservableObject {
     private var wasOnBattery = false
     private var sleepTask: Task<Void, Never>?
     private var sleepObserver: NSObjectProtocol?
+    /// Held while the screen is dimmed with the lid shut, so the idle timer can't turn it off.
+    /// (On battery, macOS won't turn a closed lid's screen back on, which cuts off remote apps.)
+    private var screenAwakeAssertion: IOPMAssertionID = 0
 
     /// A live controller, or a demo one (for previews) that never touches real settings.
     public init(demo: Mode? = nil, setUp: Bool = true, device: Device? = nil) {
@@ -189,12 +193,29 @@ public final class SleepController: ObservableObject {
             defaults.set(current, forKey: Self.savedBrightnessKey)
         }
         let dimmed = Brightness.set(0)
+        keepScreenAwake(true)
         log.info("Dimmed the screen (saved brightness \(defaults.float(forKey: Self.savedBrightnessKey)), ok: \(dimmed))")
+    }
+
+    private func keepScreenAwake(_ on: Bool) {
+        if on, screenAwakeAssertion == 0 {
+            let result = IOPMAssertionCreateWithName(
+                kIOPMAssertionTypePreventUserIdleDisplaySleep as CFString,
+                IOPMAssertionLevel(kIOPMAssertionLevelOn),
+                "Travel Mode: keeping the dimmed screen on for remote access" as CFString,
+                &screenAwakeAssertion)
+            log.info("Keeping the dimmed screen awake (ok: \(result == kIOReturnSuccess))")
+        } else if !on, screenAwakeAssertion != 0 {
+            IOPMAssertionRelease(screenAwakeAssertion)
+            screenAwakeAssertion = 0
+            log.info("Let the screen sleep normally again")
+        }
     }
 
     /// Puts back the brightness saved when the lid closed, if any.
     public func restoreBrightness(reason: String) {
         guard !isDemo else { return }
+        keepScreenAwake(false)
         let defaults = UserDefaults.standard
         guard defaults.object(forKey: Self.savedBrightnessKey) != nil else { return }
         let saved = defaults.float(forKey: Self.savedBrightnessKey)

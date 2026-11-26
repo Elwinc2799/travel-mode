@@ -62,8 +62,8 @@ public enum LidCloseAction: String, CaseIterable, Sendable {
 
     public var caption: String {
         switch self {
-        case .screenOff: "At Desk only. Also locks the Mac if a password is required after sleep."
-        case .dim: "At Desk only. The screen goes dark but stays on and unlocked; brightness comes back when you open the lid."
+        case .screenOff: "At Desk only. Also locks the Mac if a password is required after sleep. On battery, remote apps can't show the screen."
+        case .dim: "At Desk only. The screen goes dark but stays on and unlocked, so remote-desktop apps keep working, even on battery. Brightness comes back when you open the lid."
         }
     }
 }
