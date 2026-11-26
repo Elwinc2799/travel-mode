@@ -55,12 +55,20 @@ public struct PanelView: View {
             .padding(.top, 16)
 
             // The packing shortcut. At Desk the Mac can't sleep at all, so this switches first.
+            // During the countdown before sleep, the same row cancels it.
             Button {
-                controller.switchToTravellingAndSleep()
+                if controller.sleepingAt != nil {
+                    controller.cancelSleep()
+                } else {
+                    controller.switchToTravellingAndSleep()
+                }
             } label: {
-                Label(mode == .desk ? "Switch to Travelling and sleep" : "Sleep now", systemImage: "moon.zzz")
+                // One label whose text changes, not two views: swapping views gives VoiceOver a new
+                // element, and its cursor is left on the old one, so VO-Space wouldn't cancel.
+                Label(sleepRowTitle, systemImage: controller.sleepingAt != nil ? "xmark.circle" : "moon.zzz")
             }
             .buttonStyle(QuietButtonStyle(prominent: true))
+            .accessibilityIdentifier("sleepRow")
             .focusRing(cornerRadius: 4)
             .padding(.top, 10)
 
@@ -78,10 +86,12 @@ public struct PanelView: View {
                 .padding(.vertical, 12)
 
             if controller.device.hasLid {
-                VStack(alignment: .leading, spacing: 3) {
-                    Toggle("Screen off when the lid closes", isOn: $controller.screenOffOnLidClose)
-                        .toggleStyle(PillToggleStyle())
-                    Text("At Desk only. Also locks the Mac if a password is required after sleep.")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("When the lid closes")
+                        .font(.callout)
+                    ChoicePicker(options: lidActions, selection: $controller.lidCloseAction,
+                                 label: "When the lid closes") { $0.title }
+                    Text(controller.lidCloseAction.caption)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -89,6 +99,27 @@ public struct PanelView: View {
                 .opacity(mode == .desk ? 1 : 0.6)
                 .padding(.bottom, 10)
             }
+
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle("Flip sound", isOn: $controller.flipSound)
+                        .toggleStyle(PillToggleStyle())
+                    HStack(spacing: 4) {
+                        Text("Sound:")
+                            .foregroundStyle(.secondary)
+                        PopUpChoice(options: FlipSoundStyle.allCases, selection: $controller.flipSoundStyle,
+                                    label: "Flip sound style", title: \.title) { style in
+                            if !controller.isDemo { Sounds.previewFlip(style) }
+                        }
+                    }
+                    .font(.footnote)
+                    .opacity(controller.flipSound ? 1 : 0.45)
+                    .disabled(!controller.flipSound)
+                }
+                Toggle("Countdown sound", isOn: $controller.countdownSound)
+                    .toggleStyle(PillToggleStyle())
+            }
+            .padding(.bottom, 10)
 
             Toggle("Open at login", isOn: $openAtLogin)
                 .toggleStyle(PillToggleStyle())
@@ -114,10 +145,14 @@ public struct PanelView: View {
 
             HStack {
                 Spacer()
-                Button("Quit Travel Mode") { NSApp.terminate(nil) }
+                Button("Quit Travel Mode") {
+                    controller.prepareToQuit()
+                    NSApp.terminate(nil)
+                }
                     .buttonStyle(QuietButtonStyle())
                     .focusRing(cornerRadius: 4)
                     .keyboardShortcut("q")
+                    .help("Turns normal sleep back on, then quits.")
             }
             .padding(.top, controller.hasOwnRule ? 6 : 12)
         }
@@ -135,8 +170,18 @@ public struct PanelView: View {
         .onAppear {
             controller.message = nil
             controller.refresh()
-            if boardFrames == nil { syncLoginSwitch() }
+            if !controller.isDemo { syncLoginSwitch() }
         }
+    }
+
+    private var sleepRowTitle: String {
+        if controller.sleepingAt != nil { return "Cancel sleep" }
+        return controller.mode == .desk ? "Switch to Travelling and sleep" : "Sleep now"
+    }
+
+    /// Dimming needs the private brightness API; without it, only screen off is offered.
+    private var lidActions: [LidCloseAction] {
+        controller.isDemo || Brightness.isSupported ? LidCloseAction.allCases : [.screenOff]
     }
 
     /// Shows the real login-item state (it can fail, or need approval in System Settings).

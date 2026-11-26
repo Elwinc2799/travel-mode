@@ -9,6 +9,14 @@ import TravelModeKit
 
 let outputDir = CommandLine.arguments.dropFirst().first ?? "docs"
 
+// `RenderPreview --sounds <folder>` writes the app's sounds as WAV files instead.
+if CommandLine.arguments.dropFirst().first == "--sounds" {
+    let folder = CommandLine.arguments.dropFirst(2).first ?? "build/sounds"
+    try MainActor.assumeIsolated { try Sounds.export(to: URL(fileURLWithPath: folder)) }
+    print("Wrote the sounds to \(folder)")
+    exit(0)
+}
+
 /// A stand-in for the menu bar panel's window: rounded, with the system's light or dark surface.
 struct PanelChrome<Content: View>: View {
     let scheme: ColorScheme
@@ -63,6 +71,16 @@ MainActor.assumeIsolated {
     save(PanelChrome(scheme: .light) {
         UnplugWarningView(deviceName: "MacBook Air", onSwitch: {}, onDismiss: {})
     }, "unplug-warning-light.png")
+    for scheme in [ColorScheme.light, .dark] {
+        save(PanelChrome(scheme: scheme) {
+            SleepCountdownView(endsAt: Date(), duration: SleepController.sleepCountdown,
+                               fixedRemaining: 1.3, onCancel: {})
+        }, "sleep-countdown-\(scheme == .dark ? "dark" : "light").png")
+    }
+    let dimming = SleepController(demo: .desk)
+    dimming.lidCloseAction = .dim
+    save(PanelChrome(scheme: .light) { PanelView(controller: dimming, openAtLogin: true) },
+         "panel-dim-light.png")
 
     // The flip animation: rest, At Desk → Travelling, rest, Travelling → At Desk, rest. 30 fps.
     let fps = 30

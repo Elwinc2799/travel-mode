@@ -91,6 +91,9 @@ public struct SplitFlapBoard: View {
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Current mode: \(text)")
+        .onChange(of: text) { old, new in
+            if frames == nil { Sounds.playFlip(from: old, to: new, reduceMotion: reduceMotion) }
+        }
     }
 }
 

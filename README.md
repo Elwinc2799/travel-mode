@@ -9,9 +9,9 @@ Closing a MacBook's lid always puts it to sleep, unless an external display is c
 
 <p align="center"><img src="docs/flip.gif" width="376" alt="The Travel Mode panel flipping from At Desk to Travelling, like a departure board"></p>
 
-| At Desk | Travelling (dark mode) |
-|---|---|
-| ![At Desk panel](docs/panel-desk-light.png) | ![Travelling panel](docs/panel-travelling-dark.png) |
+| At Desk | Travelling (dark mode) | Before sleeping |
+|---|---|---|
+| ![At Desk panel](docs/panel-desk-light.png) | ![Travelling panel](docs/panel-travelling-dark.png) | ![Sleep countdown](docs/sleep-countdown-light.png) |
 
 ## Do you need it?
 
@@ -27,9 +27,15 @@ The app still runs on desktop Macs. There it says it was made for MacBooks and l
 
 - Shows the current mode in the menu bar: a laptop at your desk, a suitcase when travelling. At Desk is marked amber (it never sleeps) and Travelling green (safe to pack).
 - Switches with one click. The board flips letter by letter, like an airport departure board. With Reduce motion on, it fades instead. VoiceOver announces the new mode.
-- **Warns you before you pack.** Unplug the charger while At Desk and you get a notification: "Still At Desk: your MacBook won't sleep, even in a bag", with a **Switch to Travelling** button.
-- **Switch to Travelling and sleep**: one click to pack up. While travelling it becomes **Sleep now**.
-- **Screen off when the lid closes** (on by default). At Desk, macOS keeps the built-in screen lit inside a closed lid until the display-sleep timer runs out. Travel Mode turns it off the moment the lid closes. If your Mac asks for a password after the display sleeps, that also locks it. It leaves the screens alone when an external display is connected, and waking the screen remotely afterwards still works.
+- **Warns you before you pack.** Unplug the charger while At Desk and a small panel appears under the menu bar: "Still At Desk: your MacBook won't sleep, even in a bag", with a **Switch to Travelling** button. It goes away when you plug back in.
+- **Switch to Travelling and sleep**: one click to pack up. The panel switches to Travelling at once, and a two-second countdown in the middle of the screen gives you time to let go of the trackpad (a touch would wake it straight back up). **Cancel** stops it (or Esc, while the panel is open). With VoiceOver on, the countdown is ten seconds, so you hear the announcement and have time to cancel. While travelling the row becomes **Sleep now**, with the same countdown.
+- **When the lid closes**, At Desk, macOS keeps the built-in screen lit inside the closed lid until the display-sleep timer runs out. Choose what Travel Mode does instead:
+  - **Turn screen off** (the default). If your Mac asks for a password after the display sleeps, that also locks it.
+  - **Dim screen**: lowest brightness, no lock, so Screen Sharing and remote-desktop apps carry on as before. The brightness comes back when you open the lid, even if the app quit or the Mac restarted in between. macOS has no public API for screen brightness, so this uses the private DisplayServices framework; if a future macOS removes it, the option disappears.
+
+  Either way, nothing changes when an external display is connected.
+- **Quit puts things back.** Quitting from the panel turns normal sleep back on, so the Mac isn't left unable to sleep with no menu bar icon to tell you. A restart or logout doesn't, so a Mac used as a server stays reachable after an update. Neither does quitting with the lid shut (say, over Screen Sharing), since the Mac would sleep at once and cut you off.
+- **Sounds**: a light mechanical rattle as the flaps land, and soft ticks during the sleep countdown, both made in code (no audio files). Each has its own switch in the panel, and the flaps can sound like the original rattle, a paper flap, a mechanical tick or a wooden tock (you hear each as you pick it), and all of them, previews included, stay quiet when *Play user interface sound effects* is off in System Settings › Sound.
 - **Open at login**, from the panel.
 - A command line for scripts:
   ```bash
@@ -78,9 +84,9 @@ The app is ad-hoc signed, not notarized; there's no paid Apple Developer ID behi
 
 ## Uninstall
 
-1. In the panel, choose **Require password to switch** (removes the sudo rule), then **Quit Travel Mode**.
+1. In the panel, choose **Require password to switch** (removes the sudo rule), then **Quit Travel Mode**, which turns normal sleep back on. If you're At Desk, macOS asks for your password for that.
 2. Delete `Travel Mode.app`.
-3. Make sure sleep is back on:
+3. If you want to be sure sleep is back on:
    ```bash
    sudo pmset -a disablesleep 0
    ```

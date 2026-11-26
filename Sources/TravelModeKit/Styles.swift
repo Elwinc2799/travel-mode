@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The one prominent action: switching mode. Slate, like the board.
@@ -89,6 +90,106 @@ struct PillToggleStyle: ToggleStyle {
         .accessibilityAddTraits(.isToggle)
         .accessibilityValue(configuration.isOn ? "On" : "Off")
     }
+}
+
+/// A two- or three-way choice drawn in SwiftUI, like a small segmented control.
+/// VoiceOver reads each segment as a button, with the chosen one marked selected.
+struct ChoicePicker<Value: Hashable>: View {
+    let options: [Value]
+    @Binding var selection: Value
+    let label: String
+    let title: (Value) -> String
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(options, id: \.self) { option in
+                let chosen = option == selection
+                Button {
+                    withAnimation(.easeOut(duration: 0.15)) { selection = option }
+                } label: {
+                    Text(title(option))
+                        .font(.callout.weight(chosen ? .semibold : .regular))
+                        .foregroundStyle(chosen ? .primary : .secondary)
+                        .frame(maxWidth: .infinity, minHeight: 24)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(chosen ? Color.primary.opacity(0.14) : .clear)
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .focusRing(cornerRadius: 5)
+                .accessibilityAddTraits(chosen ? .isSelected : [])
+            }
+        }
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(label)
+    }
+}
+
+/// A small text button that opens a native menu of choices, with a check by the chosen one.
+/// (Drawn in SwiftUI so the README previews can render it; the menu itself is AppKit.)
+struct PopUpChoice<Value: Hashable>: View {
+    let options: [Value]
+    @Binding var selection: Value
+    let label: String
+    let title: (Value) -> String
+    var onPick: (Value) -> Void = { _ in }
+
+    var body: some View {
+        Button {
+            showMenu()
+        } label: {
+            HStack(spacing: 3) {
+                Text(title(selection))
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+            }
+            .foregroundStyle(.primary)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .focusRing(cornerRadius: 4)
+        .accessibilityLabel(label)
+        .accessibilityValue(title(selection))
+    }
+
+    private func showMenu() {
+        let menu = NSMenu()
+        var chosenItem: NSMenuItem?
+        for option in options {
+            let item = ClosureMenuItem(title: title(option)) {
+                selection = option
+                onPick(option)
+            }
+            if option == selection {
+                item.state = .on
+                chosenItem = item
+            }
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: chosenItem, at: NSEvent.mouseLocation, in: nil)
+    }
+}
+
+/// A menu item that runs a closure.
+final class ClosureMenuItem: NSMenuItem {
+    private let handler: () -> Void
+
+    init(title: String, handler: @escaping () -> Void) {
+        self.handler = handler
+        super.init(title: title, action: #selector(run), keyEquivalent: "")
+        target = self
+    }
+
+    required init(coder: NSCoder) { fatalError("not used") }
+
+    @objc private func run() { handler() }
 }
 
 /// Custom button styles get no system focus ring, so draw one in the accent colour when focused
